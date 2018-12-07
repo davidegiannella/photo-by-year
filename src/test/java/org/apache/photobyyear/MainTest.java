@@ -19,9 +19,16 @@
 
 package org.apache.photobyyear;
 
+import org.apache.commons.imaging.ImageReadException;
+import org.apache.commons.imaging.formats.jpeg.JpegImageMetadata;
+import org.apache.commons.imaging.formats.tiff.TiffField;
+import org.apache.commons.imaging.formats.tiff.TiffImageMetadata;
+import org.apache.commons.imaging.formats.tiff.constants.ExifTagConstants;
+import org.apache.commons.imaging.formats.tiff.taginfos.TagInfoAscii;
 import org.junit.Assert;
 import org.junit.Test;
 import org.mockito.Mockito;
+import org.mockito.internal.configuration.injection.MockInjection;
 
 import java.io.File;
 import java.net.URISyntaxException;
@@ -102,5 +109,58 @@ public class MainTest {
 
         // if the ensureDirectories gives a false, it should raise an IAE.
         mSpy.run();
+    }
+
+    @Test(expected = NullPointerException.class)
+    public void parseMetaNullMeta() throws ImageReadException {
+        Main.parseMeta(null);
+    }
+
+    @Test
+    public void parseMetaNoExif() throws ImageReadException {
+        TiffImageMetadata exif = Mockito.mock(TiffImageMetadata.class);
+        when(exif.findField(ExifTagConstants.EXIF_TAG_DATE_TIME_ORIGINAL)).thenReturn(null);
+        JpegImageMetadata meta = new JpegImageMetadata(null, exif);
+
+        assertEquals(Main.NO_EXIF_PATH, Main.parseMeta(meta));
+    }
+
+    @Test
+    public void parseMetaColon() throws ImageReadException {
+        TiffField dateTime = Mockito.mock(TiffField.class);
+        when(dateTime.getStringValue()).thenReturn("2009:12:31 10:11:12");
+
+        TiffImageMetadata exif = Mockito.mock(TiffImageMetadata.class);
+        when(exif.findField(ExifTagConstants.EXIF_TAG_DATE_TIME_ORIGINAL)).thenReturn(dateTime);
+
+        JpegImageMetadata meta = new JpegImageMetadata(null, exif);
+
+        assertEquals("2009/12/31/", Main.parseMeta(meta));
+    }
+
+    @Test
+    public void parseMetaDashesAndColon() throws ImageReadException {
+        TiffField dateTime = Mockito.mock(TiffField.class);
+        when(dateTime.getStringValue()).thenReturn("2018-06-01 13:53:00");
+
+        TiffImageMetadata exif = Mockito.mock(TiffImageMetadata.class);
+        when(exif.findField(ExifTagConstants.EXIF_TAG_DATE_TIME_ORIGINAL)).thenReturn(dateTime);
+
+        JpegImageMetadata meta = new JpegImageMetadata(null, exif);
+
+        assertEquals("2018/06/01/", Main.parseMeta(meta));
+    }
+
+    @Test
+    public void parseMetaWrongFormat() throws ImageReadException {
+        TiffField dateTime = Mockito.mock(TiffField.class);
+        when(dateTime.getStringValue()).thenReturn("just a wrong fo:rm:at");
+
+        TiffImageMetadata exif = Mockito.mock(TiffImageMetadata.class);
+        when(exif.findField(ExifTagConstants.EXIF_TAG_DATE_TIME_ORIGINAL)).thenReturn(dateTime);
+
+        JpegImageMetadata meta = new JpegImageMetadata(null, exif);
+
+        assertEquals(Main.NO_EXIF_PATH, Main.parseMeta(meta));
     }
 }

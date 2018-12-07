@@ -40,6 +40,10 @@ import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static org.apache.commons.imaging.formats.tiff.constants.ExifTagConstants.EXIF_TAG_DATE_TIME_ORIGINAL;
@@ -156,15 +160,12 @@ public class Main {
             }
 
             if (meta instanceof JpegImageMetadata) {
-                JpegImageMetadata jpegMeta = (JpegImageMetadata) meta;
-                TiffField dateTimeOriginal = jpegMeta.findEXIFValue(EXIF_TAG_DATE_TIME_ORIGINAL);
-                if (dateTimeOriginal == null) {
-                    return NO_EXIF_PATH;
+                String path = parseMeta((JpegImageMetadata) meta);
+                if (NO_EXIF_PATH.equals(path)) {
+                    LOG.error("Problems parsing Exif and formats. '{}' has been copied to '{}'. " +
+                            "Check the logs for more details", image.getAbsolutePath(), NO_EXIF_PATH);
                 }
-                LocalDateTime date = LocalDateTime.parse(dateTimeOriginal.getStringValue(),
-                    DateTimeFormatter.ofPattern("yyyy:MM:dd HH:mm:ss"));
-                return String.format("%s/%s/%s/", date.getYear(), date.getMonthValue(),
-                    date.getDayOfMonth());
+                return path;
             } else {
                 LOG.error("Not a valid metadata class. Expected '{}' but was '{}'",
                     JpegImageMetadata.class.getName(), meta.getClass().getName());
@@ -178,5 +179,32 @@ public class Main {
         }
 
         return null;
+    }
+
+    static final List<DateTimeFormatter> DATE_FORMATTERS = Collections.unmodifiableList(
+            Arrays.asList(
+                    DateTimeFormatter.ofPattern("yyyy:MM:dd HH:mm:ss"),
+                    DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+            )
+    );
+
+    static String parseMeta(JpegImageMetadata meta) throws ImageReadException {
+        checkNotNull(meta);
+        JpegImageMetadata jpegMeta = (JpegImageMetadata) meta;
+        TiffField dateTimeOriginal = jpegMeta.findEXIFValue(EXIF_TAG_DATE_TIME_ORIGINAL);
+        if (dateTimeOriginal == null) {
+            return NO_EXIF_PATH;
+        }
+
+        for (DateTimeFormatter formatter : DATE_FORMATTERS) {
+            try {
+                LocalDateTime date = LocalDateTime.parse(dateTimeOriginal.getStringValue(), formatter);
+                return String.format("%s/%02d/%02d/", date.getYear(), date.getMonthValue(),
+                        date.getDayOfMonth());
+            } catch (DateTimeParseException e) {
+                LOG.warn("Error parsing meta through available formatters. Original value: '{}'", dateTimeOriginal.getStringValue());
+            }
+        }
+        return NO_EXIF_PATH;
     }
 }
