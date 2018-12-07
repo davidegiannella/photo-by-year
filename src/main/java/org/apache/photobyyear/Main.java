@@ -39,6 +39,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static org.apache.commons.imaging.formats.tiff.constants.ExifTagConstants.EXIF_TAG_DATE_TIME_ORIGINAL;
@@ -169,9 +170,11 @@ public class Main {
                     JpegImageMetadata.class.getName(), meta.getClass().getName());
             }
         } catch (ImageReadException e) {
-            LOG.error("Error reading metadata.", e);
+            LOG.error("Error reading metadata on '{}'", image.getAbsolutePath() ,e);
         } catch (IOException e) {
-            LOG.error("Error reading metadata.", e);
+            LOG.error("Error reading metadata on '{}'", image.getAbsolutePath() ,e);
+        } catch (DateTimeParseException e) {
+            LOG.error("Error parsing Date/Time metadata on '{}'", image.getAbsolutePath(), e);
         }
 
         return null;
