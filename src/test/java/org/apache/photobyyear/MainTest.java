@@ -27,8 +27,10 @@ import org.apache.commons.imaging.formats.tiff.constants.ExifTagConstants;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
@@ -86,6 +88,42 @@ public class MainTest {
         assertTrue(Files.exists(destination.resolve("NoExif/no-exif2.jpg")));
         assertFalse(Files.exists(destination.resolve("ignored.txt")));
         assertFalse(Files.exists(destination.resolve("2009/12/31/nested.jpg")));
+    }
+
+    @Test
+    public void runReportsSkippedExistingFileAsNormalOutput() throws IOException, URISyntaxException {
+        Path source = Files.createDirectory(tempDir.resolve("source"));
+        Path destination = Files.createDirectory(tempDir.resolve("destination"));
+        copyResource("exif.jpg", source.resolve("exif.jpg"));
+
+        Path existingTarget = destination.resolve("2009/12/31/exif.jpg");
+        Files.createDirectories(existingTarget.getParent());
+        Files.writeString(existingTarget, "already here", StandardCharsets.UTF_8);
+
+        CapturedOutput output = captureOutput(() -> new Main(source.toFile(), destination.toFile()).run());
+
+        assertTrue(output.out().contains("Skipped '" + source.resolve("exif.jpg") + "' because destination already exists: '" + existingTarget + "'"));
+        assertFalse(output.err().contains("Skipping"));
+        assertFalse(output.err().contains("Exception"));
+    }
+
+    @Test
+    public void runReportsCopyFailuresWithoutStackTraceAndContinues() throws IOException, URISyntaxException {
+        Path source = Files.createDirectory(tempDir.resolve("source"));
+        Path destination = Files.createDirectory(tempDir.resolve("destination"));
+        copyResource("exif.jpg", source.resolve("blocked.jpg"));
+        copyResource("no-exif2.jpg", source.resolve("after-failure.jpg"));
+
+        Path blockedDirectory = destination.resolve("2009");
+        Files.writeString(blockedDirectory, "not a directory", StandardCharsets.UTF_8);
+        Path blockedTarget = destination.resolve("2009/12/31/blocked.jpg");
+
+        CapturedOutput output = captureOutput(() -> new Main(source.toFile(), destination.toFile()).run());
+
+        assertTrue(output.err().contains("Failed to copy '" + source.resolve("blocked.jpg") + "' to '" + blockedTarget + "'"));
+        assertFalse(output.err().contains("Exception"));
+        assertTrue(output.out().contains("'" + source.resolve("after-failure.jpg") + "' -> '" + destination.resolve("NoExif/after-failure.jpg") + "' done."));
+        assertTrue(Files.exists(destination.resolve("NoExif/after-failure.jpg")));
     }
 
     @Test
@@ -207,5 +245,25 @@ public class MainTest {
         URL resource = getClass().getClassLoader().getResource(resourceName);
         assertNotNull(resource, "Missing test resource: " + resourceName);
         Files.copy(Path.of(resource.toURI()), target);
+    }
+
+    private CapturedOutput captureOutput(Runnable runnable) {
+        PrintStream originalOut = System.out;
+        PrintStream originalErr = System.err;
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ByteArrayOutputStream err = new ByteArrayOutputStream();
+
+        try {
+            System.setOut(new PrintStream(out));
+            System.setErr(new PrintStream(err));
+            runnable.run();
+            return new CapturedOutput(out.toString(StandardCharsets.UTF_8), err.toString(StandardCharsets.UTF_8));
+        } finally {
+            System.setOut(originalOut);
+            System.setErr(originalErr);
+        }
+    }
+
+    private record CapturedOutput(String out, String err) {
     }
 }

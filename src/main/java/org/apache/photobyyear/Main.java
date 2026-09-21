@@ -22,8 +22,8 @@ package org.apache.photobyyear;
 import joptsimple.OptionParser;
 import joptsimple.OptionSet;
 import joptsimple.OptionSpec;
-import org.apache.commons.imaging.ImagingException;
 import org.apache.commons.imaging.Imaging;
+import org.apache.commons.imaging.ImagingException;
 import org.apache.commons.imaging.common.ImageMetadata;
 import org.apache.commons.imaging.formats.jpeg.JpegImageMetadata;
 import org.apache.commons.imaging.formats.tiff.TiffField;
@@ -39,7 +39,6 @@ import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -96,34 +95,31 @@ public class Main {
                 return Files.isRegularFile(entry) && entry.getFileName().toString().toLowerCase()
                     .endsWith(".jpg");
             })) {
-                pictures.forEach(pic -> {
-
-                    try {
-                        // resolve and create, if not there, the directory stucture
-                        Path d = destPath.resolve(extractPath(pic.toFile()));
-                        Files.createDirectories(d);
-
-                        // resolving the final destinaton and name for the copy
-                        d = d.resolve(pic.getFileName());
-
-                        if (d.toFile().exists()) {
-                            System.err.printf(
-                                "Error. File '%s' already exists on destination ('%s'). Skipping%n",
-                                pic, d);
-                            return;
-                        }
-
-                        Files.copy(pic, d);
-                        System.out.printf("'%s' -> '%s' done.%n", pic, d);
-                    } catch (IOException e) {
-                        System.err
-                            .printf("Error copying '%s' to destination. %s%n", pic, e.getMessage());
-                        e.printStackTrace();
-                    }
-                });
+                pictures.forEach(pic -> copyPicture(destPath, pic));
             }
         } catch (IOException e) {
-            e.printStackTrace();
+            System.err.printf("Failed to scan source directory '%s'. %s%n", source, e.getMessage());
+            LOG.error("Failed to scan source directory '{}'. {}", source, e.getMessage());
+        }
+    }
+
+    private static void copyPicture(Path destPath, Path pic) {
+        Path targetDirectory = destPath.resolve(extractPath(pic.toFile()));
+        Path target = targetDirectory.resolve(pic.getFileName());
+
+        try {
+            Files.createDirectories(targetDirectory);
+
+            if (target.toFile().exists()) {
+                System.out.printf("Skipped '%s' because destination already exists: '%s'%n", pic, target);
+                return;
+            }
+
+            Files.copy(pic, target);
+            System.out.printf("'%s' -> '%s' done.%n", pic, target);
+        } catch (IOException e) {
+            System.err.printf("Failed to copy '%s' to '%s'. %s%n", pic, target, e.getMessage());
+            LOG.error("Failed to copy '{}' to '{}'. {}", pic, target, e.getMessage());
         }
     }
 
@@ -172,11 +168,11 @@ public class Main {
                     JpegImageMetadata.class.getName(), meta.getClass().getName());
             }
         } catch (ImagingException e) {
-            LOG.error("Error reading metadata on '{}'", image.getAbsolutePath() ,e);
+            LOG.error("Error reading metadata on '{}'. {}", image.getAbsolutePath(), e.getMessage());
         } catch (IOException e) {
-            LOG.error("Error reading metadata on '{}'", image.getAbsolutePath() ,e);
+            LOG.error("Error reading metadata on '{}'. {}", image.getAbsolutePath(), e.getMessage());
         } catch (DateTimeParseException e) {
-            LOG.error("Error parsing Date/Time metadata on '{}'", image.getAbsolutePath(), e);
+            LOG.error("Error parsing Date/Time metadata on '{}'. {}", image.getAbsolutePath(), e.getMessage());
         }
 
         return NO_EXIF_PATH;
