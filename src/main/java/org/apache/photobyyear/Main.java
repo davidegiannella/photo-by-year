@@ -22,7 +22,7 @@ package org.apache.photobyyear;
 import joptsimple.OptionParser;
 import joptsimple.OptionSet;
 import joptsimple.OptionSpec;
-import org.apache.commons.imaging.ImageReadException;
+import org.apache.commons.imaging.ImagingException;
 import org.apache.commons.imaging.Imaging;
 import org.apache.commons.imaging.common.ImageMetadata;
 import org.apache.commons.imaging.formats.jpeg.JpegImageMetadata;
@@ -170,7 +170,7 @@ public class Main {
                 LOG.error("Not a valid metadata class. Expected '{}' but was '{}'",
                     JpegImageMetadata.class.getName(), meta.getClass().getName());
             }
-        } catch (ImageReadException e) {
+        } catch (ImagingException e) {
             LOG.error("Error reading metadata on '{}'", image.getAbsolutePath() ,e);
         } catch (IOException e) {
             LOG.error("Error reading metadata on '{}'", image.getAbsolutePath() ,e);
@@ -188,10 +188,10 @@ public class Main {
             )
     );
 
-    static String parseMeta(JpegImageMetadata meta) throws ImageReadException {
+    static String parseMeta(JpegImageMetadata meta) throws ImagingException {
         checkNotNull(meta);
         JpegImageMetadata jpegMeta = (JpegImageMetadata) meta;
-        TiffField dateTimeOriginal = jpegMeta.findEXIFValue(EXIF_TAG_DATE_TIME_ORIGINAL);
+        TiffField dateTimeOriginal = jpegMeta.findExifValue(EXIF_TAG_DATE_TIME_ORIGINAL);
         if (dateTimeOriginal == null) {
             return NO_EXIF_PATH;
         }

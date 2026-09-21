@@ -19,31 +19,27 @@
 
 package org.apache.photobyyear;
 
-import org.apache.commons.imaging.ImageReadException;
+import org.apache.commons.imaging.ImagingException;
 import org.apache.commons.imaging.formats.jpeg.JpegImageMetadata;
 import org.apache.commons.imaging.formats.tiff.TiffField;
 import org.apache.commons.imaging.formats.tiff.TiffImageMetadata;
 import org.apache.commons.imaging.formats.tiff.constants.ExifTagConstants;
-import org.apache.commons.imaging.formats.tiff.taginfos.TagInfoAscii;
-import org.junit.Assert;
-import org.junit.Test;
-import org.mockito.Mockito;
-import org.mockito.internal.configuration.injection.MockInjection;
+import org.junit.jupiter.api.Test;
 
 import java.io.File;
 import java.net.URISyntaxException;
 import java.net.URL;
 
-import static org.junit.Assert.*;
-import static org.mockito.Matchers.any;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
 public class MainTest {
-    @Test(expected = NullPointerException.class)
+    @Test
     public void extractPathNullArg() {
-        Main.extractPath(null);
+        assertThrows(NullPointerException.class, () -> Main.extractPath(null));
     }
 
     @Test
@@ -60,9 +56,9 @@ public class MainTest {
         assertEquals("2009/12/31/", Main.extractPath(image));
     }
 
-    @Test(expected = NullPointerException.class)
-    public void ensureDirectoriesNullArgs() throws URISyntaxException {
-        Main.ensureDirectories(null, null);
+    @Test
+    public void ensureDirectoriesNullArgs() {
+        assertThrows(NullPointerException.class, () -> Main.ensureDirectories(null, null));
     }
 
     @Test
@@ -85,40 +81,41 @@ public class MainTest {
         when(doesntExists.isDirectory()).thenReturn(false);
         when(doesntExists.exists()).thenReturn(false);
 
-        assertFalse("Should be false if source doesn't exists",
-            Main.ensureDirectories(doesntExists, ok));
-        assertFalse("Should be false if source is not a directory",
-            Main.ensureDirectories(existsNoDir, ok));
+        assertFalse(Main.ensureDirectories(doesntExists, ok),
+            "Should be false if source doesn't exists");
+        assertFalse(Main.ensureDirectories(existsNoDir, ok),
+            "Should be false if source is not a directory");
 
-        assertFalse("Should be false if destination doesn't exists",
-            Main.ensureDirectories(ok, doesntExists));
-        assertFalse("Should be false if destination is not a directory",
-            Main.ensureDirectories(ok, existsNoDir));
+        assertFalse(Main.ensureDirectories(ok, doesntExists),
+            "Should be false if destination doesn't exists");
+        assertFalse(Main.ensureDirectories(ok, existsNoDir),
+            "Should be false if destination is not a directory");
 
-        assertFalse("Should be false if both source and destination points to the same directory",
-            Main.ensureDirectories(ok, ok));
+        assertFalse(Main.ensureDirectories(ok, ok),
+            "Should be false if both source and destination points to the same directory");
 
-        assertTrue("Everything should be ok in this case", Main.ensureDirectories(ok, ok2));
+        assertTrue(Main.ensureDirectories(ok, ok2),
+            "Everything should be ok in this case");
     }
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void runWrongDirs() {
         Main m = new Main(mock(File.class), mock(File.class));
         Main mSpy = spy(m);
         when(mSpy.ensureDirectories(mock(File.class), mock(File.class))).thenReturn(false);
 
         // if the ensureDirectories gives a false, it should raise an IAE.
-        mSpy.run();
-    }
-
-    @Test(expected = NullPointerException.class)
-    public void parseMetaNullMeta() throws ImageReadException {
-        Main.parseMeta(null);
+        assertThrows(IllegalArgumentException.class, mSpy::run);
     }
 
     @Test
-    public void parseMetaNoExif() throws ImageReadException {
-        TiffImageMetadata exif = Mockito.mock(TiffImageMetadata.class);
+    public void parseMetaNullMeta() {
+        assertThrows(NullPointerException.class, () -> Main.parseMeta(null));
+    }
+
+    @Test
+    public void parseMetaNoExif() throws ImagingException {
+        TiffImageMetadata exif = mock(TiffImageMetadata.class);
         when(exif.findField(ExifTagConstants.EXIF_TAG_DATE_TIME_ORIGINAL)).thenReturn(null);
         JpegImageMetadata meta = new JpegImageMetadata(null, exif);
 
@@ -126,11 +123,11 @@ public class MainTest {
     }
 
     @Test
-    public void parseMetaColon() throws ImageReadException {
-        TiffField dateTime = Mockito.mock(TiffField.class);
+    public void parseMetaColon() throws ImagingException {
+        TiffField dateTime = mock(TiffField.class);
         when(dateTime.getStringValue()).thenReturn("2009:12:31 10:11:12");
 
-        TiffImageMetadata exif = Mockito.mock(TiffImageMetadata.class);
+        TiffImageMetadata exif = mock(TiffImageMetadata.class);
         when(exif.findField(ExifTagConstants.EXIF_TAG_DATE_TIME_ORIGINAL)).thenReturn(dateTime);
 
         JpegImageMetadata meta = new JpegImageMetadata(null, exif);
@@ -139,11 +136,11 @@ public class MainTest {
     }
 
     @Test
-    public void parseMetaDashesAndColon() throws ImageReadException {
-        TiffField dateTime = Mockito.mock(TiffField.class);
+    public void parseMetaDashesAndColon() throws ImagingException {
+        TiffField dateTime = mock(TiffField.class);
         when(dateTime.getStringValue()).thenReturn("2018-06-01 13:53:00");
 
-        TiffImageMetadata exif = Mockito.mock(TiffImageMetadata.class);
+        TiffImageMetadata exif = mock(TiffImageMetadata.class);
         when(exif.findField(ExifTagConstants.EXIF_TAG_DATE_TIME_ORIGINAL)).thenReturn(dateTime);
 
         JpegImageMetadata meta = new JpegImageMetadata(null, exif);
@@ -152,11 +149,11 @@ public class MainTest {
     }
 
     @Test
-    public void parseMetaWrongFormat() throws ImageReadException {
-        TiffField dateTime = Mockito.mock(TiffField.class);
+    public void parseMetaWrongFormat() throws ImagingException {
+        TiffField dateTime = mock(TiffField.class);
         when(dateTime.getStringValue()).thenReturn("just a wrong fo:rm:at");
 
-        TiffImageMetadata exif = Mockito.mock(TiffImageMetadata.class);
+        TiffImageMetadata exif = mock(TiffImageMetadata.class);
         when(exif.findField(ExifTagConstants.EXIF_TAG_DATE_TIME_ORIGINAL)).thenReturn(dateTime);
 
         JpegImageMetadata meta = new JpegImageMetadata(null, exif);
