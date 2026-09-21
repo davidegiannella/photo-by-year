@@ -25,18 +25,25 @@ import org.apache.commons.imaging.formats.tiff.TiffField;
 import org.apache.commons.imaging.formats.tiff.TiffImageMetadata;
 import org.apache.commons.imaging.formats.tiff.constants.ExifTagConstants;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.io.File;
+import java.io.IOException;
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
 public class MainTest {
+    @TempDir
+    Path tempDir;
+
     @Test
     public void extractPathNullArg() {
         assertThrows(NullPointerException.class, () -> Main.extractPath(null));
@@ -54,6 +61,41 @@ public class MainTest {
         URL resource = this.getClass().getClassLoader().getResource("exif.jpg");
         File image = new File(resource.toURI());
         assertEquals("2009/12/31/", Main.extractPath(image));
+    }
+
+    @Test
+    public void runCopiesJpgFilesToExpectedDirectoriesAndSkipsExistingFiles() throws IOException, URISyntaxException {
+        Path source = Files.createDirectory(tempDir.resolve("source"));
+        Path destination = Files.createDirectory(tempDir.resolve("destination"));
+        Path nested = Files.createDirectory(source.resolve("nested"));
+
+        copyResource("exif.jpg", source.resolve("exif.jpg"));
+        copyResource("exif.jpg", source.resolve("fresh-exif.jpg"));
+        copyResource("no-exif2.jpg", source.resolve("no-exif2.jpg"));
+        copyResource("exif.jpg", nested.resolve("nested.jpg"));
+        Files.writeString(source.resolve("ignored.txt"), "not a jpg", StandardCharsets.UTF_8);
+
+        Path existingTarget = destination.resolve("2009/12/31/exif.jpg");
+        Files.createDirectories(existingTarget.getParent());
+        Files.writeString(existingTarget, "already here", StandardCharsets.UTF_8);
+
+        new Main(source.toFile(), destination.toFile()).run();
+
+        assertEquals("already here", Files.readString(existingTarget, StandardCharsets.UTF_8));
+        assertTrue(Files.exists(destination.resolve("2009/12/31/fresh-exif.jpg")));
+        assertTrue(Files.exists(destination.resolve("NoExif/no-exif2.jpg")));
+        assertFalse(Files.exists(destination.resolve("ignored.txt")));
+        assertFalse(Files.exists(destination.resolve("2009/12/31/nested.jpg")));
+    }
+
+    @Test
+    public void runCopiesUnreadableMetadataJpgToNoExif() throws IOException {
+        Path source = Files.createDirectory(tempDir.resolve("source"));
+        Path destination = Files.createDirectory(tempDir.resolve("destination"));
+        Files.writeString(source.resolve("invalid.jpg"), "not real jpeg data", StandardCharsets.UTF_8);
+
+        assertDoesNotThrow(() -> new Main(source.toFile(), destination.toFile()).run());
+        assertEquals("not real jpeg data", Files.readString(destination.resolve("NoExif/invalid.jpg"), StandardCharsets.UTF_8));
     }
 
     @Test
@@ -159,5 +201,11 @@ public class MainTest {
         JpegImageMetadata meta = new JpegImageMetadata(null, exif);
 
         assertEquals(Main.NO_EXIF_PATH, Main.parseMeta(meta));
+    }
+
+    private void copyResource(String resourceName, Path target) throws IOException, URISyntaxException {
+        URL resource = getClass().getClassLoader().getResource(resourceName);
+        assertNotNull(resource, "Missing test resource: " + resourceName);
+        Files.copy(Path.of(resource.toURI()), target);
     }
 }

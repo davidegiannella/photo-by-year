@@ -30,7 +30,6 @@ import org.apache.commons.imaging.formats.tiff.TiffField;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.annotation.CheckForNull;
 import javax.annotation.Nonnull;
 import java.io.File;
 import java.io.IOException;
@@ -93,34 +92,36 @@ public class Main {
 
         try {
             Path destPath = destination.toPath();
-            Files.newDirectoryStream(Paths.get(source.toURI()), entry -> {
+            try (var pictures = Files.newDirectoryStream(Paths.get(source.toURI()), entry -> {
                 return Files.isRegularFile(entry) && entry.getFileName().toString().toLowerCase()
                     .endsWith(".jpg");
-            }).forEach(pic -> {
+            })) {
+                pictures.forEach(pic -> {
 
-                try {
-                    // resolve and create, if not there, the directory stucture
-                    Path d = destPath.resolve(extractPath(pic.toFile()));
-                    Files.createDirectories(d);
+                    try {
+                        // resolve and create, if not there, the directory stucture
+                        Path d = destPath.resolve(extractPath(pic.toFile()));
+                        Files.createDirectories(d);
 
-                    // resolving the final destinaton and name for the copy
-                    d = d.resolve(d.toFile().getAbsolutePath() + "/" + pic.getFileName());
+                        // resolving the final destinaton and name for the copy
+                        d = d.resolve(pic.getFileName());
 
-                    if (d.toFile().exists()) {
-                        System.err.printf(
-                            "Error. File '%s' already exists on destination ('%s'). Skipping%n",
-                            pic, d);
-                        return;
+                        if (d.toFile().exists()) {
+                            System.err.printf(
+                                "Error. File '%s' already exists on destination ('%s'). Skipping%n",
+                                pic, d);
+                            return;
+                        }
+
+                        Files.copy(pic, d);
+                        System.out.printf("'%s' -> '%s' done.%n", pic, d);
+                    } catch (IOException e) {
+                        System.err
+                            .printf("Error copying '%s' to destination. %s%n", pic, e.getMessage());
+                        e.printStackTrace();
                     }
-
-                    Files.copy(pic, d);
-                    System.out.printf("'%s' -> '%s' done.%n", pic, d);
-                } catch (IOException e) {
-                    System.err
-                        .printf("Error copying '%s' to destination. %s%n", pic, e.getMessage());
-                    e.printStackTrace();
-                }
-            });
+                });
+            }
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -146,9 +147,9 @@ public class Main {
      * extract the relative path off the exif of thep provided image
      *
      * @param image the image to parse. Cannot be null
-     * @return the path or null in case of errors
+     * @return the path, or {@link #NO_EXIF_PATH} in case of missing or unreadable metadata
      */
-    @CheckForNull
+    @Nonnull
     static String extractPath(@Nonnull File image) {
         checkNotNull(image);
 
@@ -178,7 +179,7 @@ public class Main {
             LOG.error("Error parsing Date/Time metadata on '{}'", image.getAbsolutePath(), e);
         }
 
-        return null;
+        return NO_EXIF_PATH;
     }
 
     static final List<DateTimeFormatter> DATE_FORMATTERS = Collections.unmodifiableList(
