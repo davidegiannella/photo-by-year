@@ -77,6 +77,47 @@ class PhotoOrganizerTest {
     }
 
     @Test
+    void copyPictureDryRunReportsPlannedCopyWithoutWriting() throws IOException {
+        Path source = Files.writeString(tempDir.resolve("photo.jpg"), "content", StandardCharsets.UTF_8);
+        Path destination = Files.createDirectory(tempDir.resolve("destination"));
+        Path target = destination.resolve("2009/12/31/photo.jpg");
+        ExifPathExtractor extractor = mock(ExifPathExtractor.class);
+        when(extractor.extractPath(source.toFile())).thenReturn("2009/12/31/");
+
+        CapturedOutput output = captureOutput(() -> new PhotoOrganizer(
+            destination,
+            extractor,
+            new PhotoByYearOptions(true)
+        ).copyPicture(source));
+
+        assertFalse(Files.exists(target.getParent()));
+        assertFalse(Files.exists(target));
+        assertTrue(output.out().contains("[dry-run] '" + source + "' -> '" + target + "' would be copied."));
+        assertEquals("", output.err());
+    }
+
+    @Test
+    void copyPictureDryRunReportsSkippedExistingFileWithoutOverwriting() throws IOException {
+        Path source = Files.writeString(tempDir.resolve("photo.jpg"), "new content", StandardCharsets.UTF_8);
+        Path destination = Files.createDirectory(tempDir.resolve("destination"));
+        Path existingTarget = destination.resolve("2009/12/31/photo.jpg");
+        Files.createDirectories(existingTarget.getParent());
+        Files.writeString(existingTarget, "already here", StandardCharsets.UTF_8);
+        ExifPathExtractor extractor = mock(ExifPathExtractor.class);
+        when(extractor.extractPath(source.toFile())).thenReturn("2009/12/31/");
+
+        CapturedOutput output = captureOutput(() -> new PhotoOrganizer(
+            destination,
+            extractor,
+            new PhotoByYearOptions(true)
+        ).copyPicture(source));
+
+        assertEquals("already here", Files.readString(existingTarget, StandardCharsets.UTF_8));
+        assertTrue(output.out().contains("[dry-run] Skipped '" + source + "' because destination already exists: '" + existingTarget + "'"));
+        assertEquals("", output.err());
+    }
+
+    @Test
     void copyPictureReportsCopyFailuresWithoutStackTrace() throws IOException {
         Path source = Files.writeString(tempDir.resolve("photo.jpg"), "content", StandardCharsets.UTF_8);
         Path destination = Files.createDirectory(tempDir.resolve("destination"));

@@ -37,7 +37,20 @@ class PhotoByYearApplication {
     private final PhotoOrganizer photoOrganizer;
 
     PhotoByYearApplication(@Nonnull Path source, @Nonnull Path destination) {
-        this(source, destination, new SourceScanner(), new PhotoOrganizer(destination, new ExifPathExtractor()));
+        this(source, destination, PhotoByYearOptions.defaults());
+    }
+
+    PhotoByYearApplication(
+        @Nonnull Path source,
+        @Nonnull Path destination,
+        @Nonnull PhotoByYearOptions options
+    ) {
+        this(
+            source,
+            destination,
+            new SourceScanner(),
+            new PhotoOrganizer(destination, new ExifPathExtractor(), options)
+        );
     }
 
     PhotoByYearApplication(

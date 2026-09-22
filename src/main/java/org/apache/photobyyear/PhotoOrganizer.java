@@ -34,10 +34,20 @@ class PhotoOrganizer {
 
     private final Path destination;
     private final ExifPathExtractor pathExtractor;
+    private final PhotoByYearOptions options;
 
     PhotoOrganizer(@Nonnull Path destination, @Nonnull ExifPathExtractor pathExtractor) {
+        this(destination, pathExtractor, PhotoByYearOptions.defaults());
+    }
+
+    PhotoOrganizer(
+        @Nonnull Path destination,
+        @Nonnull ExifPathExtractor pathExtractor,
+        @Nonnull PhotoByYearOptions options
+    ) {
         this.destination = checkNotNull(destination);
         this.pathExtractor = checkNotNull(pathExtractor);
+        this.options = checkNotNull(options);
     }
 
     void copyPicture(@Nonnull Path picture) {
@@ -46,19 +56,32 @@ class PhotoOrganizer {
         Path targetDirectory = destination.resolve(pathExtractor.extractPath(picture.toFile()));
         Path target = targetDirectory.resolve(picture.getFileName());
 
+        if (target.toFile().exists()) {
+            reportSkipped(picture, target);
+            return;
+        }
+
+        if (options.dryRun()) {
+            System.out.printf("[dry-run] '%s' -> '%s' would be copied.%n", picture, target);
+            return;
+        }
+
         try {
             Files.createDirectories(targetDirectory);
-
-            if (target.toFile().exists()) {
-                System.out.printf("Skipped '%s' because destination already exists: '%s'%n", picture, target);
-                return;
-            }
-
             Files.copy(picture, target);
             System.out.printf("'%s' -> '%s' done.%n", picture, target);
         } catch (IOException e) {
             System.err.printf("Failed to copy '%s' to '%s'. %s%n", picture, target, e.getMessage());
             LOG.error("Failed to copy '{}' to '{}'. {}", picture, target, e.getMessage());
         }
+    }
+
+    private void reportSkipped(Path picture, Path target) {
+        if (options.dryRun()) {
+            System.out.printf("[dry-run] Skipped '%s' because destination already exists: '%s'%n", picture, target);
+            return;
+        }
+
+        System.out.printf("Skipped '%s' because destination already exists: '%s'%n", picture, target);
     }
 }

@@ -73,6 +73,38 @@ class PhotoByYearApplicationTest {
     }
 
     @Test
+    void runDryRunReportsPlannedActionsWithoutChangingDestination() throws IOException, URISyntaxException {
+        Path source = Files.createDirectory(tempDir.resolve("source"));
+        Path destination = Files.createDirectory(tempDir.resolve("destination"));
+        Path nested = Files.createDirectory(source.resolve("nested"));
+
+        copyResource("exif.jpg", source.resolve("exif.jpg"));
+        copyResource("no-exif2.jpg", source.resolve("no-exif2.jpg"));
+        copyResource("exif.jpg", nested.resolve("nested.jpg"));
+        Files.writeString(source.resolve("ignored.txt"), "not a jpg", StandardCharsets.UTF_8);
+
+        Path existingTarget = destination.resolve("2009/12/31/exif.jpg");
+        Files.createDirectories(existingTarget.getParent());
+        Files.writeString(existingTarget, "already here", StandardCharsets.UTF_8);
+
+        CapturedOutput output = captureOutput(() -> new PhotoByYearApplication(
+            source,
+            destination,
+            new PhotoByYearOptions(true)
+        ).run());
+
+        Path noExifTarget = destination.resolve("NoExif/no-exif2.jpg");
+        assertEquals("already here", Files.readString(existingTarget, StandardCharsets.UTF_8));
+        assertFalse(Files.exists(noExifTarget.getParent()));
+        assertFalse(Files.exists(noExifTarget));
+        assertFalse(Files.exists(destination.resolve("ignored.txt")));
+        assertFalse(Files.exists(destination.resolve("2009/12/31/nested.jpg")));
+        assertTrue(output.out().contains("[dry-run] Skipped '" + source.resolve("exif.jpg") + "' because destination already exists: '" + existingTarget + "'"));
+        assertTrue(output.out().contains("[dry-run] '" + source.resolve("no-exif2.jpg") + "' -> '" + noExifTarget + "' would be copied."));
+        assertEquals("", output.err());
+    }
+
+    @Test
     void runThrowsWhenDirectoriesAreInvalid() {
         Path source = tempDir.resolve("missing-source");
         Path destination = tempDir.resolve("missing-destination");

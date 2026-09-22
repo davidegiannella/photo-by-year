@@ -34,6 +34,11 @@ public class Main {
     private static final OptionSpec<File> optionDestination = parser
         .accepts("d", "Directory where to put the parsed pictures").withRequiredArg()
         .ofType(File.class).required();
+    private static final String optionDryRun = "dry-run";
+
+    static {
+        parser.accepts(optionDryRun, "Print planned actions without copying files");
+    }
 
     public static void main(String[] args) throws IOException {
         OptionSet options = null;
@@ -48,7 +53,8 @@ public class Main {
         if (options != null) {
             new PhotoByYearApplication(
                 options.valueOf(optionSource).toPath(),
-                options.valueOf(optionDestination).toPath()
+                options.valueOf(optionDestination).toPath(),
+                new PhotoByYearOptions(options.has(optionDryRun))
             ).run();
         }
     }
