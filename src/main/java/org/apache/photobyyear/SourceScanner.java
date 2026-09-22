@@ -33,13 +33,18 @@ class SourceScanner {
         checkNotNull(source);
 
         List<Path> pictures = new ArrayList<>();
-        try (var directoryStream = Files.newDirectoryStream(source, this::isJpgFile)) {
+        try (var directoryStream = Files.newDirectoryStream(source, this::isSupportedJpegFile)) {
             directoryStream.forEach(pictures::add);
         }
         return pictures;
     }
 
-    private boolean isJpgFile(Path entry) {
-        return Files.isRegularFile(entry) && entry.getFileName().toString().toLowerCase().endsWith(".jpg");
+    private boolean isSupportedJpegFile(Path entry) {
+        if (!Files.isRegularFile(entry)) {
+            return false;
+        }
+
+        String fileName = entry.getFileName().toString().toLowerCase();
+        return fileName.endsWith(".jpg") || fileName.endsWith(".jpeg");
     }
 }

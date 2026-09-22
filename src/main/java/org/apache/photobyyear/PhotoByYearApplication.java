@@ -66,7 +66,7 @@ class PhotoByYearApplication {
     }
 
     public void run() {
-        System.out.printf("Copying from '%s' to '%s'%n", source.toAbsolutePath(), destination.toAbsolutePath());
+        System.out.printf("Copying JPG/JPEG files from '%s' to '%s'%n", source.toAbsolutePath(), destination.toAbsolutePath());
         if (!DirectoryValidator.ensureDirectories(source.toFile(), destination.toFile())) {
             throw new IllegalArgumentException(
                 "Either source and/or destination are not valid directories or don't exist");

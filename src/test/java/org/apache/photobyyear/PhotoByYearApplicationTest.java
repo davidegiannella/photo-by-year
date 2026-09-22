@@ -46,8 +46,11 @@ class PhotoByYearApplicationTest {
 
         copyResource("exif.jpg", source.resolve("exif.jpg"));
         copyResource("exif.jpg", source.resolve("fresh-exif.jpg"));
+        copyResource("exif.jpg", source.resolve("fresh-exif.jpeg"));
         copyResource("no-exif2.jpg", source.resolve("no-exif2.jpg"));
+        copyResource("no-exif2.jpg", source.resolve("no-exif2.JPEG"));
         copyResource("exif.jpg", nested.resolve("nested.jpg"));
+        copyResource("exif.jpg", nested.resolve("nested.jpeg"));
         Files.writeString(source.resolve("ignored.txt"), "not a jpg", StandardCharsets.UTF_8);
 
         Path existingTarget = destination.resolve("2009/12/31/exif.jpg");
@@ -57,15 +60,18 @@ class PhotoByYearApplicationTest {
         CapturedOutput output = captureOutput(() -> new PhotoByYearApplication(source, destination).run());
 
         assertTrue(output.out().matches(
-            Pattern.quote("Copying from '" + source.toAbsolutePath() + "' to '" + destination.toAbsolutePath() + "'")
+            Pattern.quote("Copying JPG/JPEG files from '" + source.toAbsolutePath() + "' to '" + destination.toAbsolutePath() + "'")
                 + lineSeparatorPattern()
                 + "(?s:.*)"
         ));
         assertEquals("already here", Files.readString(existingTarget, StandardCharsets.UTF_8));
         assertTrue(Files.exists(destination.resolve("2009/12/31/fresh-exif.jpg")));
+        assertTrue(Files.exists(destination.resolve("2009/12/31/fresh-exif.jpeg")));
         assertTrue(Files.exists(destination.resolve("NoExif/no-exif2.jpg")));
+        assertTrue(Files.exists(destination.resolve("NoExif/no-exif2.JPEG")));
         assertFalse(Files.exists(destination.resolve("ignored.txt")));
         assertFalse(Files.exists(destination.resolve("2009/12/31/nested.jpg")));
+        assertFalse(Files.exists(destination.resolve("2009/12/31/nested.jpeg")));
     }
 
     @Test
@@ -106,7 +112,7 @@ class PhotoByYearApplicationTest {
         assertFalse(Files.exists(destination.resolve("ignored.txt")));
         assertFalse(Files.exists(destination.resolve("2009/12/31/nested.jpg")));
         assertTrue(output.out().matches(
-            Pattern.quote("Copying from '" + source.toAbsolutePath() + "' to '" + destination.toAbsolutePath() + "'")
+            Pattern.quote("Copying JPG/JPEG files from '" + source.toAbsolutePath() + "' to '" + destination.toAbsolutePath() + "'")
                 + lineSeparatorPattern()
                 + Pattern.quote("[dry-run] Skipped '" + source.resolve("exif.jpg") + "' because destination already exists: '" + existingTarget + "'")
                 + lineSeparatorPattern()
