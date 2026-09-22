@@ -28,6 +28,7 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
@@ -55,7 +56,8 @@ class PhotoOrganizerTest {
 
         Path target = destination.resolve("2009/12/31/photo.jpg");
         assertEquals("content", Files.readString(target, StandardCharsets.UTF_8));
-        assertTrue(output.out().contains("'" + source + "' -> '" + target + "' done."));
+        assertOutputMatches(output.out(), quotedLine("'" + source + "' -> '" + target + "' done."));
+        assertEquals("", output.err());
     }
 
     @Test
@@ -71,9 +73,11 @@ class PhotoOrganizerTest {
         CapturedOutput output = captureOutput(() -> new PhotoOrganizer(destination, extractor).copyPicture(source));
 
         assertEquals("already here", Files.readString(existingTarget, StandardCharsets.UTF_8));
-        assertTrue(output.out().contains("Skipped '" + source + "' because destination already exists: '" + existingTarget + "'"));
-        assertFalse(output.err().contains("Skipping"));
-        assertFalse(output.err().contains("Exception"));
+        assertOutputMatches(
+            output.out(),
+            quotedLine("Skipped '" + source + "' because destination already exists: '" + existingTarget + "'")
+        );
+        assertEquals("", output.err());
     }
 
     @Test
@@ -92,7 +96,10 @@ class PhotoOrganizerTest {
 
         assertFalse(Files.exists(target.getParent()));
         assertFalse(Files.exists(target));
-        assertTrue(output.out().contains("[dry-run] '" + source + "' -> '" + target + "' would be copied."));
+        assertOutputMatches(
+            output.out(),
+            quotedLine("[dry-run] '" + source + "' -> '" + target + "' would be copied.")
+        );
         assertEquals("", output.err());
     }
 
@@ -113,7 +120,10 @@ class PhotoOrganizerTest {
         ).copyPicture(source));
 
         assertEquals("already here", Files.readString(existingTarget, StandardCharsets.UTF_8));
-        assertTrue(output.out().contains("[dry-run] Skipped '" + source + "' because destination already exists: '" + existingTarget + "'"));
+        assertOutputMatches(
+            output.out(),
+            quotedLine("[dry-run] Skipped '" + source + "' because destination already exists: '" + existingTarget + "'")
+        );
         assertEquals("", output.err());
     }
 
@@ -129,8 +139,54 @@ class PhotoOrganizerTest {
 
         CapturedOutput output = captureOutput(() -> new PhotoOrganizer(destination, extractor).copyPicture(source));
 
-        assertTrue(output.err().contains("Failed to copy '" + source + "' to '" + blockedTarget + "'"));
-        assertFalse(output.err().contains("Exception"));
+        String combinedOutput = output.out() + output.err();
+        assertOutputContainsLineMatching(
+            combinedOutput,
+            ".*" + Pattern.quote("Failed to copy '" + source + "' to '" + blockedTarget + "'. ") + ".+"
+        );
+        assertFalse(combinedOutput.contains("Exception"));
+    }
+
+    @Test
+    void copyPictureDryRunReportsPlannedCopyInsteadOfCopyFailure() throws IOException {
+        Path source = Files.writeString(tempDir.resolve("photo.jpg"), "content", StandardCharsets.UTF_8);
+        Path destination = Files.createDirectory(tempDir.resolve("destination"));
+        Path blockedDirectory = destination.resolve("2009");
+        Files.writeString(blockedDirectory, "not a directory", StandardCharsets.UTF_8);
+        Path target = destination.resolve("2009/12/31/photo.jpg");
+        ExifPathExtractor extractor = mock(ExifPathExtractor.class);
+        when(extractor.extractPath(source.toFile())).thenReturn("2009/12/31/");
+
+        CapturedOutput output = captureOutput(() -> new PhotoOrganizer(
+            destination,
+            extractor,
+            new PhotoByYearOptions(true)
+        ).copyPicture(source));
+
+        assertOutputMatches(
+            output.out(),
+            quotedLine("[dry-run] '" + source + "' -> '" + target + "' would be copied.")
+        );
+        assertEquals("", output.err());
+    }
+
+    private void assertOutputMatches(String output, String regex) {
+        assertTrue(output.matches(regex), () -> "Expected output to match:%n".formatted() + regex + "%nActual:%n".formatted() + output);
+    }
+
+    private void assertOutputContainsLineMatching(String output, String regex) {
+        assertTrue(
+            output.lines().anyMatch(line -> line.matches(regex)),
+            () -> "Expected output to contain line matching:%n".formatted() + regex + "%nActual:%n".formatted() + output
+        );
+    }
+
+    private String quotedLine(String line) {
+        return Pattern.quote(line) + lineSeparatorPattern();
+    }
+
+    private String lineSeparatorPattern() {
+        return "\\R";
     }
 
     private CapturedOutput captureOutput(Runnable runnable) {

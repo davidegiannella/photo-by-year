@@ -30,6 +30,7 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -53,8 +54,13 @@ class PhotoByYearApplicationTest {
         Files.createDirectories(existingTarget.getParent());
         Files.writeString(existingTarget, "already here", StandardCharsets.UTF_8);
 
-        new PhotoByYearApplication(source, destination).run();
+        CapturedOutput output = captureOutput(() -> new PhotoByYearApplication(source, destination).run());
 
+        assertTrue(output.out().matches(
+            Pattern.quote("Copying from '" + source.toAbsolutePath() + "' to '" + destination.toAbsolutePath() + "'")
+                + lineSeparatorPattern()
+                + "(?s:.*)"
+        ));
         assertEquals("already here", Files.readString(existingTarget, StandardCharsets.UTF_8));
         assertTrue(Files.exists(destination.resolve("2009/12/31/fresh-exif.jpg")));
         assertTrue(Files.exists(destination.resolve("NoExif/no-exif2.jpg")));
@@ -99,8 +105,14 @@ class PhotoByYearApplicationTest {
         assertFalse(Files.exists(noExifTarget));
         assertFalse(Files.exists(destination.resolve("ignored.txt")));
         assertFalse(Files.exists(destination.resolve("2009/12/31/nested.jpg")));
-        assertTrue(output.out().contains("[dry-run] Skipped '" + source.resolve("exif.jpg") + "' because destination already exists: '" + existingTarget + "'"));
-        assertTrue(output.out().contains("[dry-run] '" + source.resolve("no-exif2.jpg") + "' -> '" + noExifTarget + "' would be copied."));
+        assertTrue(output.out().matches(
+            Pattern.quote("Copying from '" + source.toAbsolutePath() + "' to '" + destination.toAbsolutePath() + "'")
+                + lineSeparatorPattern()
+                + Pattern.quote("[dry-run] Skipped '" + source.resolve("exif.jpg") + "' because destination already exists: '" + existingTarget + "'")
+                + lineSeparatorPattern()
+                + Pattern.quote("[dry-run] '" + source.resolve("no-exif2.jpg") + "' -> '" + noExifTarget + "' would be copied.")
+                + lineSeparatorPattern()
+        ));
         assertEquals("", output.err());
     }
 
@@ -138,6 +150,10 @@ class PhotoByYearApplicationTest {
         URL resource = getClass().getClassLoader().getResource(resourceName);
         assertNotNull(resource, "Missing test resource: " + resourceName);
         Files.copy(Path.of(resource.toURI()), target);
+    }
+
+    private String lineSeparatorPattern() {
+        return "\\R";
     }
 
     private CapturedOutput captureOutput(Runnable runnable) {
