@@ -49,6 +49,8 @@ class PhotoByYearApplicationTest {
         copyResource("exif.jpg", source.resolve("fresh-exif.jpeg"));
         copyResource("no-exif2.jpg", source.resolve("no-exif2.jpg"));
         copyResource("no-exif2.jpg", source.resolve("no-exif2.JPEG"));
+        copyResource("heic-with-exif.heic", source.resolve("heic-with-exif.heic"));
+        copyResource("heic-without-exif.heic", source.resolve("heic-without-exif.heic"));
         Files.writeString(source.resolve("invalid.heic"), "not real heic data", StandardCharsets.UTF_8);
         Files.writeString(source.resolve("invalid.HEIF"), "not real heif data", StandardCharsets.UTF_8);
         copyResource("exif.jpg", nested.resolve("nested.jpg"));
@@ -72,6 +74,8 @@ class PhotoByYearApplicationTest {
         assertTrue(Files.exists(destination.resolve("2009/12/31/fresh-exif.jpeg")));
         assertTrue(Files.exists(destination.resolve("NoExif/no-exif2.jpg")));
         assertTrue(Files.exists(destination.resolve("NoExif/no-exif2.JPEG")));
+        assertTrue(Files.exists(destination.resolve("2023/12/13/heic-with-exif.heic")));
+        assertTrue(Files.exists(destination.resolve("NoExif/heic-without-exif.heic")));
         assertEquals("not real heic data", Files.readString(destination.resolve("NoExif/invalid.heic"), StandardCharsets.UTF_8));
         assertEquals("not real heif data", Files.readString(destination.resolve("NoExif/invalid.HEIF"), StandardCharsets.UTF_8));
         assertFalse(Files.exists(destination.resolve("ignored.txt")));

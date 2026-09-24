@@ -61,6 +61,24 @@ class ExifPathExtractorTest {
     }
 
     @Test
+    void extractPathHeicWithExif() throws URISyntaxException {
+        URL resource = this.getClass().getClassLoader().getResource("heic-with-exif.heic");
+        assertNotNull(resource, "Missing test resource: heic-with-exif.heic");
+        File image = new File(resource.toURI());
+
+        assertEquals("2023/12/13/", extractor.extractPath(image));
+    }
+
+    @Test
+    void extractPathHeicWithoutExif() throws URISyntaxException {
+        URL resource = this.getClass().getClassLoader().getResource("heic-without-exif.heic");
+        assertNotNull(resource, "Missing test resource: heic-without-exif.heic");
+        File image = new File(resource.toURI());
+
+        assertEquals(ExifPathExtractor.NO_EXIF_PATH, extractor.extractPath(image));
+    }
+
+    @Test
     void parseMetadataNullMetadata() {
         assertThrows(NullPointerException.class, () -> extractor.parseMetadata(null));
     }
