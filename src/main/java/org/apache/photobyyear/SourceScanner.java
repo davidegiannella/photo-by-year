@@ -24,27 +24,33 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 
 class SourceScanner {
+    static final List<String> SUPPORTED_EXTENSIONS = Collections.unmodifiableList(
+        Arrays.asList("jpg", "jpeg", "heic", "heif")
+    );
+
     List<Path> scan(@Nonnull Path source) throws IOException {
         checkNotNull(source);
 
         List<Path> pictures = new ArrayList<>();
-        try (var directoryStream = Files.newDirectoryStream(source, this::isSupportedJpegFile)) {
+        try (var directoryStream = Files.newDirectoryStream(source, this::isSupportedImageFile)) {
             directoryStream.forEach(pictures::add);
         }
         return pictures;
     }
 
-    private boolean isSupportedJpegFile(Path entry) {
+    private boolean isSupportedImageFile(Path entry) {
         if (!Files.isRegularFile(entry)) {
             return false;
         }
 
         String fileName = entry.getFileName().toString().toLowerCase();
-        return fileName.endsWith(".jpg") || fileName.endsWith(".jpeg");
+        return SUPPORTED_EXTENSIONS.stream().anyMatch(extension -> fileName.endsWith("." + extension));
     }
 }

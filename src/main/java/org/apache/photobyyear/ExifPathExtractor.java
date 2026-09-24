@@ -19,29 +19,34 @@
 
 package org.apache.photobyyear;
 
-import org.apache.commons.imaging.Imaging;
-import org.apache.commons.imaging.ImagingException;
-import org.apache.commons.imaging.common.ImageMetadata;
-import org.apache.commons.imaging.formats.jpeg.JpegImageMetadata;
-import org.apache.commons.imaging.formats.tiff.TiffField;
+import com.adobe.internal.xmp.XMPException;
+import com.drew.imaging.ImageMetadataReader;
+import com.drew.imaging.ImageProcessingException;
+import com.drew.metadata.Metadata;
+import com.drew.metadata.exif.ExifSubIFDDirectory;
+import com.drew.metadata.xmp.XmpDirectory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
 import java.io.File;
 import java.io.IOException;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Date;
 import java.util.List;
+import java.util.Optional;
 
 import static com.google.common.base.Preconditions.checkNotNull;
-import static org.apache.commons.imaging.formats.tiff.constants.ExifTagConstants.EXIF_TAG_DATE_TIME_ORIGINAL;
 
 class ExifPathExtractor {
     private static final Logger LOG = LoggerFactory.getLogger(ExifPathExtractor.class);
+    private static final String XMP_NS = "http://ns.adobe.com/xap/1.0/";
 
     static final String NO_EXIF_PATH = "NoExif/";
     static final List<DateTimeFormatter> DATE_FORMATTERS = Collections.unmodifiableList(
@@ -62,49 +67,90 @@ class ExifPathExtractor {
         checkNotNull(image);
 
         try {
-            ImageMetadata meta = Imaging.getMetadata(image);
-            if (meta == null) {
-                return NO_EXIF_PATH;
+            String path = parseMetadata(ImageMetadataReader.readMetadata(image));
+            if (NO_EXIF_PATH.equals(path)) {
+                LOG.error("Problems parsing Exif and formats. '{}' has been copied to '{}'. " +
+                        "Check the logs for more details", image.getAbsolutePath(), NO_EXIF_PATH);
             }
-
-            if (meta instanceof JpegImageMetadata) {
-                String path = parseMeta((JpegImageMetadata) meta);
-                if (NO_EXIF_PATH.equals(path)) {
-                    LOG.error("Problems parsing Exif and formats. '{}' has been copied to '{}'. " +
-                            "Check the logs for more details", image.getAbsolutePath(), NO_EXIF_PATH);
-                }
-                return path;
-            } else {
-                LOG.error("Not a valid metadata class. Expected '{}' but was '{}'",
-                    JpegImageMetadata.class.getName(), meta.getClass().getName());
-            }
-        } catch (ImagingException e) {
+            return path;
+        } catch (ImageProcessingException e) {
             LOG.error("Error reading metadata on '{}'. {}", image.getAbsolutePath(), e.getMessage());
         } catch (IOException e) {
             LOG.error("Error reading metadata on '{}'. {}", image.getAbsolutePath(), e.getMessage());
-        } catch (DateTimeParseException e) {
-            LOG.error("Error parsing Date/Time metadata on '{}'. {}", image.getAbsolutePath(), e.getMessage());
         }
 
         return NO_EXIF_PATH;
     }
 
-    String parseMeta(@Nonnull JpegImageMetadata meta) throws ImagingException {
-        checkNotNull(meta);
-        TiffField dateTimeOriginal = meta.findExifValue(EXIF_TAG_DATE_TIME_ORIGINAL);
-        if (dateTimeOriginal == null) {
-            return NO_EXIF_PATH;
+    String parseMetadata(@Nonnull Metadata metadata) {
+        checkNotNull(metadata);
+
+        return findOriginalDate(metadata)
+            .or(() -> findCreateDate(metadata))
+            .or(() -> findDigitizedDate(metadata))
+            .map(ExifPathExtractor::formatPath)
+            .orElse(NO_EXIF_PATH);
+    }
+
+    private Optional<LocalDateTime> findOriginalDate(Metadata metadata) {
+        ExifSubIFDDirectory exif = metadata.getFirstDirectoryOfType(ExifSubIFDDirectory.class);
+        if (exif == null) {
+            return Optional.empty();
+        }
+
+        return parseExifDate(exif, ExifSubIFDDirectory.TAG_DATETIME_ORIGINAL);
+    }
+
+    private Optional<LocalDateTime> findCreateDate(Metadata metadata) {
+        XmpDirectory xmp = metadata.getFirstDirectoryOfType(XmpDirectory.class);
+        if (xmp == null || xmp.getXMPMeta() == null) {
+            return Optional.empty();
+        }
+
+        try {
+            return Optional.ofNullable(xmp.getXMPMeta().getPropertyCalendar(XMP_NS, "CreateDate"))
+                .map(calendar -> LocalDateTime.ofInstant(calendar.toInstant(), calendar.getTimeZone().toZoneId()));
+        } catch (XMPException e) {
+            LOG.warn("Error parsing XMP CreateDate metadata. {}", e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    private Optional<LocalDateTime> findDigitizedDate(Metadata metadata) {
+        ExifSubIFDDirectory exif = metadata.getFirstDirectoryOfType(ExifSubIFDDirectory.class);
+        if (exif == null) {
+            return Optional.empty();
+        }
+
+        return parseExifDate(exif, ExifSubIFDDirectory.TAG_DATETIME_DIGITIZED);
+    }
+
+    private Optional<LocalDateTime> parseExifDate(ExifSubIFDDirectory exif, int tagType) {
+        return parseDate(exif.getString(tagType))
+            .or(() -> Optional.ofNullable(exif.getDate(tagType))
+                .map(ExifPathExtractor::toLocalDateTime));
+    }
+
+    private static Optional<LocalDateTime> parseDate(String value) {
+        if (value == null) {
+            return Optional.empty();
         }
 
         for (DateTimeFormatter formatter : DATE_FORMATTERS) {
             try {
-                LocalDateTime date = LocalDateTime.parse(dateTimeOriginal.getStringValue(), formatter);
-                return String.format("%s/%02d/%02d/", date.getYear(), date.getMonthValue(),
-                    date.getDayOfMonth());
+                return Optional.of(LocalDateTime.parse(value, formatter));
             } catch (DateTimeParseException e) {
-                LOG.warn("Error parsing meta through available formatters. Original value: '{}'", dateTimeOriginal.getStringValue());
+                LOG.warn("Error parsing meta through available formatters. Original value: '{}'", value);
             }
         }
-        return NO_EXIF_PATH;
+        return Optional.empty();
+    }
+
+    private static LocalDateTime toLocalDateTime(Date date) {
+        return LocalDateTime.ofInstant(Instant.ofEpochMilli(date.getTime()), ZoneId.systemDefault());
+    }
+
+    private static String formatPath(LocalDateTime date) {
+        return String.format("%s/%02d/%02d/", date.getYear(), date.getMonthValue(), date.getDayOfMonth());
     }
 }

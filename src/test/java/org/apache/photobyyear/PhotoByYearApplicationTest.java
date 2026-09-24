@@ -39,7 +39,7 @@ class PhotoByYearApplicationTest {
     Path tempDir;
 
     @Test
-    void runCopiesJpgFilesToExpectedDirectoriesAndSkipsExistingFiles() throws IOException, URISyntaxException {
+    void runCopiesSupportedFilesToExpectedDirectoriesAndSkipsExistingFiles() throws IOException, URISyntaxException {
         Path source = Files.createDirectory(tempDir.resolve("source"));
         Path destination = Files.createDirectory(tempDir.resolve("destination"));
         Path nested = Files.createDirectory(source.resolve("nested"));
@@ -49,9 +49,12 @@ class PhotoByYearApplicationTest {
         copyResource("exif.jpg", source.resolve("fresh-exif.jpeg"));
         copyResource("no-exif2.jpg", source.resolve("no-exif2.jpg"));
         copyResource("no-exif2.jpg", source.resolve("no-exif2.JPEG"));
+        Files.writeString(source.resolve("invalid.heic"), "not real heic data", StandardCharsets.UTF_8);
+        Files.writeString(source.resolve("invalid.HEIF"), "not real heif data", StandardCharsets.UTF_8);
         copyResource("exif.jpg", nested.resolve("nested.jpg"));
         copyResource("exif.jpg", nested.resolve("nested.jpeg"));
-        Files.writeString(source.resolve("ignored.txt"), "not a jpg", StandardCharsets.UTF_8);
+        Files.writeString(nested.resolve("nested.heic"), "not real heic data", StandardCharsets.UTF_8);
+        Files.writeString(source.resolve("ignored.txt"), "not a supported image", StandardCharsets.UTF_8);
 
         Path existingTarget = destination.resolve("2009/12/31/exif.jpg");
         Files.createDirectories(existingTarget.getParent());
@@ -60,7 +63,7 @@ class PhotoByYearApplicationTest {
         CapturedOutput output = captureOutput(() -> new PhotoByYearApplication(source, destination).run());
 
         assertTrue(output.out().matches(
-            Pattern.quote("Copying JPG/JPEG files from '" + source.toAbsolutePath() + "' to '" + destination.toAbsolutePath() + "'")
+            Pattern.quote("Copying supported image files (jpg, jpeg, heic, heif) from '" + source.toAbsolutePath() + "' to '" + destination.toAbsolutePath() + "'")
                 + lineSeparatorPattern()
                 + "(?s:.*)"
         ));
@@ -69,9 +72,12 @@ class PhotoByYearApplicationTest {
         assertTrue(Files.exists(destination.resolve("2009/12/31/fresh-exif.jpeg")));
         assertTrue(Files.exists(destination.resolve("NoExif/no-exif2.jpg")));
         assertTrue(Files.exists(destination.resolve("NoExif/no-exif2.JPEG")));
+        assertEquals("not real heic data", Files.readString(destination.resolve("NoExif/invalid.heic"), StandardCharsets.UTF_8));
+        assertEquals("not real heif data", Files.readString(destination.resolve("NoExif/invalid.HEIF"), StandardCharsets.UTF_8));
         assertFalse(Files.exists(destination.resolve("ignored.txt")));
         assertFalse(Files.exists(destination.resolve("2009/12/31/nested.jpg")));
         assertFalse(Files.exists(destination.resolve("2009/12/31/nested.jpeg")));
+        assertFalse(Files.exists(destination.resolve("NoExif/nested.heic")));
     }
 
     @Test
@@ -85,6 +91,16 @@ class PhotoByYearApplicationTest {
     }
 
     @Test
+    void runCopiesUnreadableMetadataHeifToNoExif() throws IOException {
+        Path source = Files.createDirectory(tempDir.resolve("source"));
+        Path destination = Files.createDirectory(tempDir.resolve("destination"));
+        Files.writeString(source.resolve("invalid.heif"), "not real heif data", StandardCharsets.UTF_8);
+
+        assertDoesNotThrow(() -> new PhotoByYearApplication(source, destination).run());
+        assertEquals("not real heif data", Files.readString(destination.resolve("NoExif/invalid.heif"), StandardCharsets.UTF_8));
+    }
+
+    @Test
     void runDryRunReportsPlannedActionsWithoutChangingDestination() throws IOException, URISyntaxException {
         Path source = Files.createDirectory(tempDir.resolve("source"));
         Path destination = Files.createDirectory(tempDir.resolve("destination"));
@@ -92,8 +108,9 @@ class PhotoByYearApplicationTest {
 
         copyResource("exif.jpg", source.resolve("exif.jpg"));
         copyResource("no-exif2.jpg", source.resolve("no-exif2.jpg"));
+        Files.writeString(source.resolve("invalid.heic"), "not real heic data", StandardCharsets.UTF_8);
         copyResource("exif.jpg", nested.resolve("nested.jpg"));
-        Files.writeString(source.resolve("ignored.txt"), "not a jpg", StandardCharsets.UTF_8);
+        Files.writeString(source.resolve("ignored.txt"), "not a supported image", StandardCharsets.UTF_8);
 
         Path existingTarget = destination.resolve("2009/12/31/exif.jpg");
         Files.createDirectories(existingTarget.getParent());
@@ -106,18 +123,24 @@ class PhotoByYearApplicationTest {
         ).run());
 
         Path noExifTarget = destination.resolve("NoExif/no-exif2.jpg");
+        Path heicTarget = destination.resolve("NoExif/invalid.heic");
         assertEquals("already here", Files.readString(existingTarget, StandardCharsets.UTF_8));
         assertFalse(Files.exists(noExifTarget.getParent()));
         assertFalse(Files.exists(noExifTarget));
+        assertFalse(Files.exists(heicTarget));
         assertFalse(Files.exists(destination.resolve("ignored.txt")));
         assertFalse(Files.exists(destination.resolve("2009/12/31/nested.jpg")));
-        assertTrue(output.out().matches(
-            Pattern.quote("Copying JPG/JPEG files from '" + source.toAbsolutePath() + "' to '" + destination.toAbsolutePath() + "'")
-                + lineSeparatorPattern()
-                + Pattern.quote("[dry-run] Skipped '" + source.resolve("exif.jpg") + "' because destination already exists: '" + existingTarget + "'")
-                + lineSeparatorPattern()
-                + Pattern.quote("[dry-run] '" + source.resolve("no-exif2.jpg") + "' -> '" + noExifTarget + "' would be copied.")
-                + lineSeparatorPattern()
+        assertTrue(output.out().startsWith(
+            "Copying supported image files (jpg, jpeg, heic, heif) from '" + source.toAbsolutePath() + "' to '" + destination.toAbsolutePath() + "'"
+        ));
+        assertTrue(output.out().contains(
+            "[dry-run] Skipped '" + source.resolve("exif.jpg") + "' because destination already exists: '" + existingTarget + "'"
+        ));
+        assertTrue(output.out().contains(
+            "[dry-run] '" + source.resolve("no-exif2.jpg") + "' -> '" + noExifTarget + "' would be copied."
+        ));
+        assertTrue(output.out().contains(
+            "[dry-run] '" + source.resolve("invalid.heic") + "' -> '" + heicTarget + "' would be copied."
         ));
         assertEquals("", output.err());
     }

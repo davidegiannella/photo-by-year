@@ -19,11 +19,11 @@
 
 package org.apache.photobyyear;
 
-import org.apache.commons.imaging.ImagingException;
-import org.apache.commons.imaging.formats.jpeg.JpegImageMetadata;
-import org.apache.commons.imaging.formats.tiff.TiffField;
-import org.apache.commons.imaging.formats.tiff.TiffImageMetadata;
-import org.apache.commons.imaging.formats.tiff.constants.ExifTagConstants;
+import com.adobe.internal.xmp.XMPMeta;
+import com.adobe.internal.xmp.XMPMetaFactory;
+import com.drew.metadata.Metadata;
+import com.drew.metadata.exif.ExifSubIFDDirectory;
+import com.drew.metadata.xmp.XmpDirectory;
 import org.junit.jupiter.api.Test;
 
 import java.io.File;
@@ -31,10 +31,10 @@ import java.net.URISyntaxException;
 import java.net.URL;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 class ExifPathExtractorTest {
+    private static final String XMP_NS = "http://ns.adobe.com/xap/1.0/";
+
     private final ExifPathExtractor extractor = new ExifPathExtractor();
 
     @Test
@@ -61,55 +61,74 @@ class ExifPathExtractorTest {
     }
 
     @Test
-    void parseMetaNullMeta() {
-        assertThrows(NullPointerException.class, () -> extractor.parseMeta(null));
+    void parseMetadataNullMetadata() {
+        assertThrows(NullPointerException.class, () -> extractor.parseMetadata(null));
     }
 
     @Test
-    void parseMetaNoExif() throws ImagingException {
-        TiffImageMetadata exif = mock(TiffImageMetadata.class);
-        when(exif.findField(ExifTagConstants.EXIF_TAG_DATE_TIME_ORIGINAL)).thenReturn(null);
-        JpegImageMetadata meta = new JpegImageMetadata(null, exif);
-
-        assertEquals(ExifPathExtractor.NO_EXIF_PATH, extractor.parseMeta(meta));
+    void parseMetadataNoExif() {
+        assertEquals(ExifPathExtractor.NO_EXIF_PATH, extractor.parseMetadata(new Metadata()));
     }
 
     @Test
-    void parseMetaColon() throws ImagingException {
-        TiffField dateTime = mock(TiffField.class);
-        when(dateTime.getStringValue()).thenReturn("2009:12:31 10:11:12");
+    void parseMetadataUsesDateTimeOriginalFirst() throws Exception {
+        Metadata metadata = new Metadata();
+        ExifSubIFDDirectory exif = new ExifSubIFDDirectory();
+        exif.setString(ExifSubIFDDirectory.TAG_DATETIME_ORIGINAL, "2009:12:31 10:11:12");
+        exif.setString(ExifSubIFDDirectory.TAG_DATETIME_DIGITIZED, "2011:02:03 10:11:12");
+        metadata.addDirectory(exif);
+        metadata.addDirectory(createXmpDirectory("2010-01-02T10:11:12"));
 
-        TiffImageMetadata exif = mock(TiffImageMetadata.class);
-        when(exif.findField(ExifTagConstants.EXIF_TAG_DATE_TIME_ORIGINAL)).thenReturn(dateTime);
-
-        JpegImageMetadata meta = new JpegImageMetadata(null, exif);
-
-        assertEquals("2009/12/31/", extractor.parseMeta(meta));
+        assertEquals("2009/12/31/", extractor.parseMetadata(metadata));
     }
 
     @Test
-    void parseMetaDashesAndColon() throws ImagingException {
-        TiffField dateTime = mock(TiffField.class);
-        when(dateTime.getStringValue()).thenReturn("2018-06-01 13:53:00");
+    void parseMetadataFallsBackToCreateDate() throws Exception {
+        Metadata metadata = new Metadata();
+        ExifSubIFDDirectory exif = new ExifSubIFDDirectory();
+        exif.setString(ExifSubIFDDirectory.TAG_DATETIME_DIGITIZED, "2011:02:03 10:11:12");
+        metadata.addDirectory(exif);
+        metadata.addDirectory(createXmpDirectory("2010-01-02T10:11:12"));
 
-        TiffImageMetadata exif = mock(TiffImageMetadata.class);
-        when(exif.findField(ExifTagConstants.EXIF_TAG_DATE_TIME_ORIGINAL)).thenReturn(dateTime);
-
-        JpegImageMetadata meta = new JpegImageMetadata(null, exif);
-
-        assertEquals("2018/06/01/", extractor.parseMeta(meta));
+        assertEquals("2010/01/02/", extractor.parseMetadata(metadata));
     }
 
     @Test
-    void parseMetaWrongFormat() throws ImagingException {
-        TiffField dateTime = mock(TiffField.class);
-        when(dateTime.getStringValue()).thenReturn("just a wrong fo:rm:at");
+    void parseMetadataFallsBackToDateTimeDigitized() {
+        Metadata metadata = new Metadata();
+        ExifSubIFDDirectory exif = new ExifSubIFDDirectory();
+        exif.setString(ExifSubIFDDirectory.TAG_DATETIME_DIGITIZED, "2011:02:03 10:11:12");
+        metadata.addDirectory(exif);
 
-        TiffImageMetadata exif = mock(TiffImageMetadata.class);
-        when(exif.findField(ExifTagConstants.EXIF_TAG_DATE_TIME_ORIGINAL)).thenReturn(dateTime);
+        assertEquals("2011/02/03/", extractor.parseMetadata(metadata));
+    }
 
-        JpegImageMetadata meta = new JpegImageMetadata(null, exif);
+    @Test
+    void parseMetadataSupportsDashesAndColon() {
+        Metadata metadata = new Metadata();
+        ExifSubIFDDirectory exif = new ExifSubIFDDirectory();
+        exif.setString(ExifSubIFDDirectory.TAG_DATETIME_ORIGINAL, "2018-06-01 13:53:00");
+        metadata.addDirectory(exif);
 
-        assertEquals(ExifPathExtractor.NO_EXIF_PATH, extractor.parseMeta(meta));
+        assertEquals("2018/06/01/", extractor.parseMetadata(metadata));
+    }
+
+    @Test
+    void parseMetadataWrongFormat() {
+        Metadata metadata = new Metadata();
+        ExifSubIFDDirectory exif = new ExifSubIFDDirectory();
+        exif.setString(ExifSubIFDDirectory.TAG_DATETIME_ORIGINAL, "just a wrong fo:rm:at");
+        metadata.addDirectory(exif);
+
+        assertEquals(ExifPathExtractor.NO_EXIF_PATH, extractor.parseMetadata(metadata));
+    }
+
+    private XmpDirectory createXmpDirectory(String createDate) throws Exception {
+        XMPMeta xmpMeta = XMPMetaFactory.create();
+        xmpMeta.setProperty(XMP_NS, "CreateDate", createDate);
+
+        XmpDirectory xmpDirectory = new XmpDirectory();
+        xmpDirectory.setXMPMeta(xmpMeta);
+        return xmpDirectory;
     }
 }
